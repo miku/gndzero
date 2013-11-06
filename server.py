@@ -104,7 +104,8 @@ def default(gnd):
         result = query.fetchone()
         wrapped = wrap(result[0])
         return Response(response=wrapped, status=200, headers=None,
-                        mimetype='text/plain', content_type=None,
+                        mimetype='text/xml',
+                        content_type='text/xml; charset=utf-8',
                         direct_passthrough=False)
 
 if __name__ == "__main__":
