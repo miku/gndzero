@@ -156,6 +156,7 @@ class Executable(luigi.Task):
     """ Checks, whether an external executable is available.
     This task returns `None` as output, so if this task is
     used make sure you check your input."""
+
     name = luigi.Parameter()
 
     def run(self):
@@ -193,6 +194,7 @@ class GNDDump(GNDTask):
 
 class GNDExtract(GNDTask):
     """ Extract the archive. """
+
     date = luigi.DateParameter(default=datetime.date.today())
 
     def requires(self):
