@@ -1,16 +1,21 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from flask import Flask, Response
-from gndzero import dbopen
+from flask import Flask, Response, url_for
+from gndzero import dbopen, SqliteDB
+
 app = Flask(__name__)
 
-DB = "/media/mtc/Data/var/data/gndzero/sqlite-db/date-2013-11-06.db"
+# the current database, must be there already
+task = SqliteDB()
+DB = task.output().fn
 
 
 @app.route("/")
 def hello():
-    return "Hello GND!"
+    return "Hello GND! Example: <a href=%s>%s</a>" % (
+        url_for('default', gnd='118514768'),
+        url_for('default', gnd='118514768'))
 
 @app.route("/gnd/<gnd>")
 def default(gnd):

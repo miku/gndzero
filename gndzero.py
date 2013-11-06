@@ -16,9 +16,10 @@ import string
 import subprocess
 import tempfile
 
-tempfile.tempdir = '/media/mtc/Data/tmp'
-HOME = '/media/mtc/Data/var/data'
+import config
 
+tempfile.tempdir = config.TEMPDIR
+HOME = config.HOME
 
 
 def convert(name):
