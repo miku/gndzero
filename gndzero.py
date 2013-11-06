@@ -184,7 +184,7 @@ class GNDDump(GNDTask):
         command = """ wget "%s" -O %s """ % (url, stopover)
         code = subprocess.call([command], shell=True)
         if not code == 0:
-            raise RuntimeError("Could not download GND dump.")
+            raise RuntimeError("Could not download GND dump: %s" % code)
         luigi.File(stopover).move(self.output().fn)
 
     def output(self):
@@ -203,7 +203,7 @@ class GNDExtract(GNDTask):
         command = """ gunzip -c %s > %s """ % (self.input().fn, stopover)
         code = subprocess.call([command], shell=True)
         if not code == 0:
-            raise RuntimeError("Could not download GND dump.")
+            raise RuntimeError("Could not extract the GND dump: %s" % code)
         luigi.File(stopover).move(self.output().fn)
 
     def output(self):
