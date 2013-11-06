@@ -28,7 +28,8 @@ Copy `config.sample.py` to `config.py` and adjust the values:
     TEMPDIR = '/tmp'
     HOME = './data'
 
-Now create the sqlite datebase. This will take a while (download, extract, insert):
+Now create the sqlite datebase. This will take a while (download,
+extract, insert) - about 20-30 minutes:
 
     $ python gndzero.py SqliteDB --local-scheduler
 
@@ -51,6 +52,10 @@ Compare:
 * [http://d-nb.info/gnd/118514768](http://d-nb.info/gnd/118514768)
 * [http://d-nb.info/gnd/121608557](http://d-nb.info/gnd/121608557)
 * [http://d-nb.info/gnd/4000362-0](http://d-nb.info/gnd/4000362-0)
+
+Format the output:
+
+    $ curl -s "http://localhost:5000/gnd/4000362-0"|xmllint --format -
 
 
 Notes
