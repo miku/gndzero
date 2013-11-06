@@ -39,3 +39,14 @@ The server
 Run the server:
 
     $ until python server.py; do echo "Re: (err: $?)" >&2; sleep 0.5; done
+
+Examples:
+
+    * http://localhost:5000/gnd/118514768
+    * http://localhost:5000/gnd/121608557
+    * http://localhost:5000/gnd/4000362-0
+
+Notes
+-----
+
+The local sqlite3 database is about 12G in size and contains 10004751 rows.
