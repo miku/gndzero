@@ -14,6 +14,7 @@ import slugify
 import sqlite3
 import string
 import subprocess
+import sys
 import tempfile
 
 import config
@@ -22,6 +23,9 @@ tempfile.tempdir = config.TEMPDIR
 HOME = config.HOME
 
 
+#
+# various utils, maybe put them into some other file
+#
 def convert(name):
     """
     Convert CamelCase to underscore, http://stackoverflow.com/a/1176023/89391.
@@ -99,7 +103,7 @@ class dbopen(object):
 
 class DefaultTask(luigi.Task):
     """
-    A default class for finc. Expects a TAG (SOURCE_ID) on the class, 
+    A default class for projects. Expects a TAG (e.g. SOURCE_ID) on the class,
     that gets turned into a instance attribute by the 
     `luigi.Task` __metaclass__.
     """
@@ -167,7 +171,7 @@ class Executable(luigi.Task):
 
 
 class GNDDump(GNDTask):
-    """Download GND task."""
+    """ Download GND task. """
 
     date = luigi.DateParameter(default=datetime.date.today())
 
@@ -178,7 +182,6 @@ class GNDDump(GNDTask):
         url = "http://datendienst.dnb.de/cgi-bin/mabit.pl?cmd=fetch&userID=opendata&pass=opendata&mabheft=GND.rdf.gz"
         stopover = random_tmp_path()
         command = """ wget "%s" -O %s """ % (url, stopover)
-        print(command)
         code = subprocess.call([command], shell=True)
         if not code == 0:
             raise RuntimeError("Could not download GND dump.")
@@ -189,7 +192,7 @@ class GNDDump(GNDTask):
 
 
 class GNDExtract(GNDTask):
-    """Extract the archive."""
+    """ Extract the archive. """
     date = luigi.DateParameter(default=datetime.date.today())
 
     def requires(self):
@@ -198,7 +201,6 @@ class GNDExtract(GNDTask):
     def run(self):
         stopover = random_tmp_path()
         command = """ gunzip -c %s > %s """ % (self.input().fn, stopover)
-        print(command)
         code = subprocess.call([command], shell=True)
         if not code == 0:
             raise RuntimeError("Could not download GND dump.")
@@ -209,7 +211,7 @@ class GNDExtract(GNDTask):
 
 
 class SqliteDB(GNDTask):
-    """Turn the dump into a (id, content) sqlite3 db."""
+    """ Turn the dump into a (id, content) sqlite3 db. """
 
     date = luigi.DateParameter(default=datetime.date.today())
 
@@ -219,25 +221,27 @@ class SqliteDB(GNDTask):
     def run(self):
         stopover = random_tmp_path()
         with dbopen(stopover) as cursor:
+
             cursor.execute("""CREATE TABLE gnd 
                               (id text, content blob)""")
-            cursor.execute("""CREATE INDEX IF NOT EXISTS idx_gnd_id ON gnd (id)""")
+            cursor.execute("""CREATE INDEX IF NOT EXISTS
+                              idx_gnd_id ON gnd (id)""")
 
             with self.input().open() as handle:
                 groups = itertools.groupby(handle, key=str.isspace)
                 for i, (k, lines) in enumerate(groups):
                     if i % 10000 == 0:
-                        print('Inserted %s rows.' % i)
+                        print('Inserted %s rows.' % i, file=sys.stderr)
                     if k:
                         continue
                     lines = map(string.strip, list(lines))
-                    match = re.search("""rdf:about="http://d-nb.info/gnd/([0-9X-]+)">""", lines[0])
+                    match = re.search("""rdf:about="http://d-nb.info/gnd/([0-9X-]+)">""",
+                                      lines[0])
                     if match:
                         row = (match.group(1), '\n'.join(lines))
                         cursor.execute("INSERT INTO gnd VALUES (?, ?)", row)
 
         luigi.File(path=stopover).move(self.output().fn)
-
 
     def output(self):
         return luigi.LocalTarget(path=self.path(ext='db'))
