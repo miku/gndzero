@@ -42,9 +42,16 @@ Run the server:
 
 Examples:
 
-* http://localhost:5000/gnd/118514768
-* http://localhost:5000/gnd/121608557
-* http://localhost:5000/gnd/4000362-0
+* [http://localhost:5000/gnd/118514768](http://localhost:5000/gnd/118514768)
+* [http://localhost:5000/gnd/121608557](http://localhost:5000/gnd/121608557)
+* [http://localhost:5000/gnd/4000362-0](http://localhost:5000/gnd/4000362-0)
+
+Compare:
+
+* [http://d-nb.info/gnd/118514768](http://d-nb.info/gnd/118514768)
+* [http://d-nb.info/gnd/121608557](http://d-nb.info/gnd/121608557)
+* [http://d-nb.info/gnd/4000362-0](http://d-nb.info/gnd/4000362-0)
+
 
 Notes
 -----
