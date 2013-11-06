@@ -28,8 +28,6 @@ Copy `config.sample.py` to `config.py` and adjust the values:
     TEMPDIR = '/tmp'
     HOME = './data'
 
-Note that both directies must be on the same device.
-
 Now create the sqlite datebase. This will take a while (download, extract, insert):
 
     $ python gndzero.py SqliteDB
