@@ -30,7 +30,7 @@ Copy `config.sample.py` to `config.py` and adjust the values:
 
 Now create the sqlite datebase. This will take a while (download, extract, insert):
 
-    $ python gndzero.py SqliteDB
+    $ python gndzero.py SqliteDB --local-scheduler
 
 
 The server
