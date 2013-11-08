@@ -16,6 +16,7 @@ import string
 import subprocess
 import sys
 import tempfile
+import urllib
 
 import config
 
@@ -53,6 +54,38 @@ def which(program):
                 return exe_file
 
     return None
+
+
+def shellout(template, **kwargs):
+    """
+    Takes a shell command template and executes it. The template must use
+    the new string format mini language. `kwargs` must consist of any defined
+    placeholders, only `output` is optional.
+    Raises RuntimeError on nonzero exit codes.
+
+    Simple template:
+
+        wc -l < {input} > {output}
+
+    Quoted curly braces:
+
+        ps ax|awk '{{print $1}}' > {output}
+
+    Usage with luigi:
+
+        ...
+        tmp = shellout('wc -l < {input} > {output}', input=self.input().fn)
+        luigi.File(tmp).move(self.output.fn())
+        ....
+
+    """
+    kwargs.setdefault('output', random_tmp_path())
+    stopover = kwargs.get('output')
+    command = template.format(**kwargs)
+    code = subprocess.call([command], shell=True)
+    if not code == 0:
+        raise RuntimeError('%s exitcode: %s' % (command, code))
+    return stopover
 
 
 def random_string(length=16):
@@ -180,13 +213,18 @@ class GNDDump(GNDTask):
         return Executable(name='wget')
 
     def run(self):
-        url = "http://datendienst.dnb.de/cgi-bin/mabit.pl?cmd=fetch&userID=opendata&pass=opendata&mabheft=GND.rdf.gz"
-        stopover = random_tmp_path()
-        command = """ wget "%s" -O %s """ % (url, stopover)
-        code = subprocess.call([command], shell=True)
-        if not code == 0:
-            raise RuntimeError("Could not download GND dump: %s" % code)
-        luigi.File(stopover).move(self.output().fn)
+        server = "datendienst.dnb.de"
+        path = "/cgi-bin/mabit.pl"
+        params = urllib.urlencode({
+            'cmd': 'fetch',
+            'userID':'opendata',
+            'pass': 'opendata',
+            'mabheft': 'GND.rdf.gz'
+        })
+        url = "http://{server}{path}?{params}".format(server=server, path=path,
+                                                      params=params)
+        output = shellout("""wget "{url}" -O {output}""", url=url)
+        luigi.File(output).move(self.output().fn)
 
     def output(self):
         return luigi.LocalTarget(path=self.path(ext='rdf.gz'))
@@ -201,12 +239,8 @@ class GNDExtract(GNDTask):
         return GNDDump(date=self.date)
 
     def run(self):
-        stopover = random_tmp_path()
-        command = """ gunzip -c %s > %s """ % (self.input().fn, stopover)
-        code = subprocess.call([command], shell=True)
-        if not code == 0:
-            raise RuntimeError("Could not extract the GND dump: %s" % code)
-        luigi.File(stopover).move(self.output().fn)
+        output = shellout("gunzip -c {input} > {output}", input=self.input().fn)
+        luigi.File(output).move(self.output().fn)
 
     def output(self):
         return luigi.LocalTarget(path=self.path(ext='rdf'))
@@ -222,23 +256,21 @@ class SqliteDB(GNDTask):
 
     def run(self):
         stopover = random_tmp_path()
-        with dbopen(stopover) as cursor:
+        pattern = re.compile("""rdf:about="http://d-nb.info/gnd/([0-9X-]+)">""")
 
+        with dbopen(stopover) as cursor:
             cursor.execute("""CREATE TABLE gnd 
-                              (id text, content blob)""")
+                              (id text  PRIMARY KEY, content blob)""")
             cursor.execute("""CREATE INDEX IF NOT EXISTS
                               idx_gnd_id ON gnd (id)""")
 
             with self.input().open() as handle:
                 groups = itertools.groupby(handle, key=str.isspace)
                 for i, (k, lines) in enumerate(groups):
-                    if i % 10000 == 0:
-                        print('Inserted %s rows.' % i, file=sys.stderr)
                     if k:
                         continue
                     lines = map(string.strip, list(lines))
-                    match = re.search("""rdf:about="http://d-nb.info/gnd/([0-9X-]+)">""",
-                                      lines[0])
+                    match = pattern.search(lines[0])
                     if match:
                         row = (match.group(1), '\n'.join(lines))
                         cursor.execute("INSERT INTO gnd VALUES (?, ?)", row)
