@@ -65,8 +65,9 @@ Percentage of the requests served within a certain time (ms)
 
 """
 
-from flask import Flask, Response, url_for
+from flask import Flask, Response, url_for, request
 from gndzero import dbopen, SqliteDB
+import re
 
 app = Flask(__name__)
 
@@ -75,7 +76,12 @@ task = SqliteDB()
 DB = task.output().fn
 
 
-def wrap(s):
+def wrap(s, rewrite=True):
+    """
+    Wrap the snippet in a proper header. Optionally rewrite GND URLs
+    to point to the local installation.
+    """
+    rewrite = True if rewrite in (True, 'on', '1', 1, 'yes') else False
     HEADER = """<rdf:RDF xmlns:gnd="http://d-nb.info/standards/elementset/gnd#"
                      xmlns:dc="http://purl.org/dc/elements/1.1/"
                      xmlns:rda="http://rdvocab.info/"
@@ -90,6 +96,12 @@ def wrap(s):
                      xmlns:owl="http://www.w3.org/2002/07/owl#"
                      xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
                      xmlns:skos="http://www.w3.org/2004/02/skos/core#">"""
+    if rewrite:
+        for match in re.finditer(r"http://d-nb.info/gnd/([0-9a-zA-Z-]+)", s):
+            gnd = match.group(1)
+            s = s.replace("http://d-nb.info/gnd/{gnd}".format(gnd=gnd),
+                          url_for('default', gnd=gnd, _external=True))
+
     return "%s\n%s\n</rdf:RDF>" % (HEADER, s)
 
 @app.route("/")
@@ -102,7 +114,7 @@ def default(gnd):
     with dbopen(DB) as cursor:
         query = cursor.execute('SELECT content FROM gnd WHERE id = ?', (gnd,))
         result = query.fetchone()
-        wrapped = wrap(result[0])
+        wrapped = wrap(result[0], rewrite=request.args.get('rewrite', True))
         return Response(response=wrapped, status=200, headers=None,
                         mimetype='text/xml',
                         content_type='text/xml; charset=utf-8',
