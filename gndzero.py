@@ -5,6 +5,7 @@ from __future__ import print_function
 
 from luigi.task import flatten
 import datetime
+from colorama import Fore, Back, Style
 import itertools
 import luigi
 import os
@@ -27,6 +28,25 @@ HOME = config.HOME
 #
 # various utils, maybe put them into some other file
 #
+def dim(text):
+    return Back.WHITE + Fore.BLACK + text + Fore.RESET + Back.RESET
+
+def green(text):
+    return Fore.GREEN + text + Fore.RESET
+
+def red(text):
+    return Fore.RED + text + Fore.RESET
+
+def yellow(text):
+    return Fore.YELLOW + text + Fore.RESET
+
+def cyan(text):
+    return Fore.CYAN + text + Fore.RESET
+
+def magenta(text):
+    return Fore.MAGENTA + text + Fore.RESET
+
+
 def convert(name):
     """
     Convert CamelCase to underscore, http://stackoverflow.com/a/1176023/89391.
@@ -82,6 +102,7 @@ def shellout(template, **kwargs):
     kwargs.setdefault('output', random_tmp_path())
     stopover = kwargs.get('output')
     command = template.format(**kwargs)
+    print(cyan(command), file=sys.stderr)
     code = subprocess.call([command], shell=True)
     if not code == 0:
         raise RuntimeError('%s exitcode: %s' % (command, code))
@@ -102,6 +123,17 @@ def random_tmp_path():
     is just a path, nothing gets touched or created.
     """
     return os.path.join(tempfile.gettempdir(), 'tasktree-%s' % random_string())
+
+
+def split(iterable, n):
+    """
+    Generalized `pairwise`. Split an iterable after every `n` items.
+    """
+    i = iter(iterable)
+    piece = tuple(itertools.islice(i, n))
+    while piece:
+        yield piece
+        piece = tuple(itertools.islice(i, n))
 
 
 class dbopen(object):
@@ -184,6 +216,10 @@ class DefaultTask(luigi.Task):
 class GNDTask(DefaultTask):
     TAG = 'gndzero'
 
+    def latest(self):
+        """ Adjust this, if updates should be done regularly. """
+        return datetime.date(2013, 11, 8)
+
 
 class Executable(luigi.Task):
     """ Checks, whether an external executable is available.
@@ -200,8 +236,21 @@ class Executable(luigi.Task):
     def complete(self):
         return which(self.name) is not None
 
+
+class VIAFDump(GNDTask):
+    """ Download a VIAF Dump. """
+
+    def requires(self):
+        return Executable(name='wget')
+
+    def run(self):
+        url = "http://viaf.org/viaf/data/viaf-20131014-links.txt.gz"
+        output = shellout("""wget {url} -O {output}""", url=url)
+        luigi.File(output).move(self.output().fn)
+
     def output(self):
-        return None
+        return luigi.LocalTarget(path=self.path(filename='{date}.txt.gz'.format(
+                                                date=self.latest())))
 
 
 class GNDDump(GNDTask):
@@ -227,7 +276,8 @@ class GNDDump(GNDTask):
         luigi.File(output).move(self.output().fn)
 
     def output(self):
-        return luigi.LocalTarget(path=self.path(ext='rdf.gz'))
+        return luigi.LocalTarget(path=self.path(filename='{date}.rdf.gz'.format(
+                                                date=self.latest())))
 
 
 class GNDExtract(GNDTask):
@@ -243,7 +293,8 @@ class GNDExtract(GNDTask):
         luigi.File(output).move(self.output().fn)
 
     def output(self):
-        return luigi.LocalTarget(path=self.path(ext='rdf'))
+        return luigi.LocalTarget(path=self.path(filename='{date}.rdf'.format(
+                                                date=self.latest())))
 
 
 class SqliteDB(GNDTask):
@@ -278,7 +329,87 @@ class SqliteDB(GNDTask):
         luigi.File(path=stopover).move(self.output().fn)
 
     def output(self):
-        return luigi.LocalTarget(path=self.path(ext='db'))
+        return luigi.LocalTarget(path=self.path(filename='{date}.db'.format(
+                                                date=self.latest())))
+
+
+class SameAs(GNDTask):
+    """
+    Extract owl:sameAs relationships from extracted dump.
+    """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return GNDExtract(date=self.date)
+
+    def run(self):
+        """ <owl:sameAs rdf:resource="http://viaf.org/viaf/22508163" /> """
+
+        link_pattern = re.compile(
+            """<owl:sameAs rdf:resource="([^"]+)" />""", 24)
+        id_pattern = re.compile(
+            """rdf:about="http://d-nb.info/gnd/([0-9X-]+)">""")
+
+        with self.input().open() as handle:
+            with self.output().open('w') as output:
+                groups = itertools.groupby(handle, key=str.isspace)
+                for i, (k, lines) in enumerate(groups):
+                    if k:
+                        continue
+                    lines = map(string.strip, list(lines))
+
+                    match = id_pattern.search(lines[0])
+                    if match:
+                        row = (match.group(1), '\n'.join(lines))
+
+                    matches = re.finditer(link_pattern, '\n'.join(lines))
+                    for match in matches:
+                        output.write('%s\t%s\n' % (row[0], match.group(1)))
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
+                                                date=self.latest())))
+
+
+class Successor(GNDTask):
+    """
+    Store all outbound edges for a GND in a two column table.
+    """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return SqliteDB(date=self.date)
+
+    def run(self):
+        pattern = re.compile("""http://d-nb.info/gnd/([0-9X-]+)""")
+
+        # fetch all gnds
+        idset = set()
+        with dbopen(self.input().fn) as cursor:
+            cursor.execute("SELECT id FROM gnd")
+            rows = cursor.fetchall()
+            for row in rows:
+                idset.add(row[0])
+
+        total, done = len(idset), 0
+        with dbopen(self.input().fn) as cursor:
+            with self.output().open('w') as output:
+                for batch in split(idset, 1000):
+                    print('{done}/{total}'.format(done=done, total=total))
+                    cursor.execute("""SELECT id, content FROM gnd
+                                      WHERE id IN (%s) """ % (
+                            ','.join([ "'%s'" % id for id in tuple(batch)])))
+                    rows = cursor.fetchall()
+                    for row in rows:
+                        id, content = row
+                        for match in pattern.finditer(content, 24):
+                            output.write('%s\t%s\n' % (id, match.group(1)))
+                        done += 1
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
+                                        date=self.latest())))
+
 
 
 if __name__ == '__main__':
