@@ -3,9 +3,10 @@
 
 from __future__ import print_function
 
-from luigi.task import flatten
-import datetime
 from colorama import Fore, Back, Style
+from luigi.task import flatten
+import collections
+import datetime
 import itertools
 import luigi
 import os
@@ -374,6 +375,7 @@ class SameAs(GNDTask):
 class Successor(GNDTask):
     """
     Store all outbound edges for a GND in a two column table.
+    This takes (toooo) long: 495m12.706s with a single process.
     """
     date = luigi.DateParameter(default=datetime.date.today())
 
@@ -405,6 +407,78 @@ class Successor(GNDTask):
                         for match in pattern.finditer(content, 24):
                             output.write('%s\t%s\n' % (id, match.group(1)))
                         done += 1
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
+                                        date=self.latest())))
+
+
+class SuccessorDB(GNDTask):
+    """
+    Store the successor relationships in an sqlite3 database.
+    """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return Successor(date=self.date)
+
+    def run(self):
+        stopover = random_tmp_path()
+
+        with self.input().open() as handle:
+            with dbopen(stopover) as cursor:
+                cursor.execute("""CREATE TABLE successor
+                                  (id text, successor text)""")
+
+                for line in handle:
+                    id, successor = line.strip().split()
+                    if id == successor:
+                        continue
+                    cursor.execute("INSERT INTO successor VALUES (?, ?)",
+                                   (id, successor))
+
+                cursor.execute("""CREATE INDEX IF NOT EXISTS
+                                  idx_successor_id ON successor (id)""")
+                cursor.execute("""CREATE INDEX IF NOT EXISTS
+                                  idx_successor_successor
+                                  ON successor (successor)""")
+
+        luigi.File(stopover).move(self.output().fn)
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.db'.format(
+                                        date=self.latest())))
+
+
+class Reach(GNDTask):
+    """
+    Compute the reach (convex hull) of all GNDs. Dump a two column file with
+    id and size of the hull. Do all in memory.
+    """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return Successor(date=self.date)
+
+    def run(self):
+        lookup = collections.defaultdict(set)
+        with self.input().open() as handle:
+            for line in handle:
+                id, successor = line.strip().split()
+                lookup[id].add(successor)
+
+        with self.output().open('w') as output:
+            for i, id in enumerate(lookup.iterkeys()):
+                queue, hull = set([id]), set()
+                while True:
+                    if len(queue) == 0:
+                        break
+                    current = queue.pop()
+                    hull.add(current)
+                    for successor in lookup.get(current, []):
+                        if not successor in hull:
+                            queue.add(successor)
+                output.write('%s\t%s\n' % (id, len(hull)))
 
     def output(self):
         return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
