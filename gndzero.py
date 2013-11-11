@@ -410,7 +410,7 @@ class Successor(GNDTask):
 
     def output(self):
         return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
-                                        date=self.latest())))
+                                                date=self.latest())))
 
 
 class SuccessorDB(GNDTask):
@@ -447,13 +447,15 @@ class SuccessorDB(GNDTask):
 
     def output(self):
         return luigi.LocalTarget(path=self.path(filename='{date}.db'.format(
-                                        date=self.latest())))
+                                                date=self.latest())))
 
 
 class Reach(GNDTask):
     """
     Compute the reach (convex hull) of all GNDs. Dump a two column file with
-    id and size of the hull. Do all in memory.
+    id and size of the hull. Do all in memory (about 4-5G required).
+
+    Takes too long, too: 121m17.535s
     """
     date = luigi.DateParameter(default=datetime.date.today())
 
@@ -482,8 +484,153 @@ class Reach(GNDTask):
 
     def output(self):
         return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
-                                        date=self.latest())))
+                                                date=self.latest())))
 
+
+class TranslationMap(GNDTask):
+    """
+    Translate the GND to sequential ids to be used with matrix
+    calculations, e.g. pagerank.
+    """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return SqliteDB(date=self.date)
+
+    def run(self):
+        sequential_id = 0
+        with dbopen(self.input().fn) as cursor:
+            cursor.execute("SELECT DISTINCT id FROM gnd")
+            rows = cursor.fetchall()
+            with self.output().open('w') as output:
+                for row in rows:
+                    output.write('%s\t%s\n' % (row[0], sequential_id))
+                    sequential_id += 1
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
+                                                date=self.latest())))
+
+
+class TranslatedSuccessor(GNDTask):
+    """
+    Translate the successor list into the integer domain.
+    """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return {
+            'data': Successor(date=self.date),
+            'map': TranslationMap(date=self.date),
+        }
+
+    def run(self):
+        mapping = {}
+        with self.input().get('map').open() as handle:
+            for line in handle:
+                id, intid = line.strip().split()
+                mapping[id] = intid
+
+        misses = set()
+        with self.input().get('data').open() as handle:
+            with self.output().open('w') as output:
+                for line in handle:
+                    id, successor = line.strip().split()
+                    if id == successor:
+                        continue
+                    try:
+                        output.write('%s\t%s\n' % (mapping[id],
+                                                   mapping[successor]))
+                    except KeyError as err:
+                        # TODO: these IDs are defined, but are not caught by the
+                        # extraction regex
+                        misses.add(id)
+                        print('missed', id)
+
+        print(len(misses))
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
+                                                date=self.latest())))
+
+
+class TranslatedSuccessorCompact(GNDTask):
+    """
+    One node per line.
+    """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return TranslatedSuccessor(date=self.date)
+
+
+    def run(self):
+        graph = collections.defaultdict(set)
+        with self.input().open() as handle:
+            for line in handle:
+                id, successor = line.strip().split()
+                graph[id].add(successor)
+
+        with self.output().open('w') as output:
+            for node, outbound in graph.iteritems():
+                value = '\t'.join([node] + list(outbound))
+                output.write('%s\n' % value)
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
+                                                date=self.latest())))
+
+
+class PageRank(GNDTask):
+    """
+    Use external program to compute pagerank fast.
+    """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return {
+            'data': TranslatedSuccessorCompact(date=self.date),
+            'pagerank': Executable(name='pagerank')
+        }
+
+    def run(self):
+        temp = shellout("pagerank {input} > {output}",
+                        input=self.input().get('data').fn)
+        luigi.File(temp).move(self.output().fn)
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
+                                                date=self.latest())))
+
+
+class TranslatePageRank(GNDTask):
+    """
+    Convert pagerank id's back to GNDs.
+    """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return {
+            'map': TranslationMap(date=self.date),
+            'pagerank': PageRank(date=self.date)
+        }
+
+    def run(self):
+        mapping = {}
+        with self.input().get('map').open() as handle:
+            for line in handle:
+                id, intid = line.strip().split()
+                mapping[intid] = id
+
+        with self.input().get('pagerank').open() as handle:
+            with self.output().open('w') as output:
+                for line in handle:
+                    intid, pagerank = line.strip().split()
+                    output.write('%s\t%s\n' % (mapping[intid], pagerank))
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
+                                                date=self.latest())))
 
 
 if __name__ == '__main__':
