@@ -59,7 +59,7 @@ Format the output:
 
 Run the ([gunicorn](http://gunicorn.org/)) server (production):
 
-    $ gunicorn --workers 4 server:app
+    $ gunicorn --workers 4 --bind 127.0.0.1:5000 server:app
 
 Notes
 -----
