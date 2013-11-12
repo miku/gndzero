@@ -10,6 +10,7 @@ import datetime
 import itertools
 import luigi
 import os
+import pandas as pd
 import random
 import re
 import slugify
@@ -627,6 +628,68 @@ class TranslatePageRank(GNDTask):
                 for line in handle:
                     intid, pagerank = line.strip().split()
                     output.write('%s\t%s\n' % (mapping[intid], pagerank))
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
+                                                date=self.latest())))
+
+
+class PreferredNameFile(GNDTask):
+    """
+    Extract all preferred names add create a single file
+    with id, preferred name.
+
+    Well, 661m26.249s.
+    """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return SqliteDB(date=self.date)
+
+    def run(self):
+        # fetch all gnds
+        idset = set()
+        with dbopen(self.input().fn) as cursor:
+            cursor.execute("SELECT id FROM gnd")
+            rows = cursor.fetchall()
+            for row in rows:
+                idset.add(row[0])
+
+        pattern = re.compile("<(gnd:preferred[^>]*)>(.*?)</gnd:preferred")
+        with dbopen(self.input().fn) as cursor:
+            with self.output().open('w') as output:
+                for id in idset:
+                    cursor.execute("SELECT content FROM gnd WHERE id = ?", (id,))
+                    content = cursor.fetchone()[0]
+                    match = pattern.search(content)
+                    if match:
+                        output.write('%s\t%s\t%s\n' % (id, match.group(2), match.group(1)))
+
+    def output(self):
+        return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(
+                                                date=self.latest())))
+
+
+class HumanReadablePageRank(GNDTask):
+    """ Add the concept name to the PageRank list. """
+    date = luigi.DateParameter(default=datetime.date.today())
+
+    def requires(self):
+        return {
+            'pagerank': TranslatePageRank(date=self.date),
+            'names': PreferredNameFile(date=self.date)
+        }
+
+    def run(self):
+        pagerank = pd.read_csv(self.input().get('pagerank').fn, sep='\t',
+                               names=('id', 'pagerank'))
+        names = pd.read_csv(self.input().get('names').fn, sep='\t',
+                            names=('id', 'name', 'kind'))
+        df = pagerank.merge(names)
+        with self.output().open('w') as output:
+            df = df.sort(columns=['pagerank'], ascending=False)
+            df.to_csv(output, sep='\t', cols=('id', 'pagerank', 'name', 'kind'),
+                      index=False, header=False)
 
     def output(self):
         return luigi.LocalTarget(path=self.path(filename='{date}.tsv'.format(

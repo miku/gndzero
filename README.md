@@ -17,7 +17,7 @@ Create a virtualenv:
     $ mkvirtualenv gndzero
     ...
 
-Install dependencies:
+Install dependencies (you'll need some C compiler):
 
     $ pip install -r requirements.txt
 
@@ -37,7 +37,7 @@ extract, insert) - about 20-30 minutes:
 The server
 ----------
 
-Run the server:
+Run the server (development):
 
     $ until python server.py; do echo "Re: (err: $?)" >&2; sleep 0.5; done
 
@@ -57,8 +57,23 @@ Format the output:
 
     $ curl -s "http://localhost:5000/gnd/4000362-0"|xmllint --format -
 
+Run the ([gunicorn](http://gunicorn.org/)) server (production):
+
+    $ gunicorn --workers 4 server:app
 
 Notes
 -----
 
 The local sqlite3 database is about 12G in size and contains 10004751 rows.
+
+----
+
+The GNDs form a graph, if occurences of GNDs in the metadata are interpreted
+as outbound links, hence you can compute a pagerank to find some often
+referred to concepts. An example output can be found here: https://gist.github.com/miku/7427351
+
+    $ time python gndzero.py HumanReadablePageRank --local-scheduler
+
+The `pagerank` command line program can be found here: https://github.com/miku/gopagerank,
+with credits due to [Thomas Dimson](https://github.com/cosbynator). The overall
+preprocessing for this takes too long (almost a day), but this is only a prototype.
