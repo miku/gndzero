@@ -247,7 +247,7 @@ class VIAFDump(GNDTask):
 
     def run(self):
         url = "http://viaf.org/viaf/data/viaf-20131014-links.txt.gz"
-        output = shellout("""wget {url} -O {output}""", url=url)
+        output = shellout("""wget --retry-connrefused {url} -O {output}""", url=url)
         luigi.File(output).move(self.output().fn)
 
     def output(self):
@@ -274,7 +274,7 @@ class GNDDump(GNDTask):
         })
         url = "http://{server}{path}?{params}".format(server=server, path=path,
                                                       params=params)
-        output = shellout("""wget "{url}" -O {output}""", url=url)
+        output = shellout("""wget --retry-connrefused "{url}" -O {output}""", url=url)
         luigi.File(output).move(self.output().fn)
 
     def output(self):
