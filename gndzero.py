@@ -219,16 +219,15 @@ class GNDTask(DefaultTask):
 
 
 class Executable(luigi.Task):
-    """ Checks, whether an external executable is available.
-    This task returns `None` as output, so if this task is
-    used make sure you check your input."""
+    """ Checks, whether an external executable is available. """
 
     name = luigi.Parameter()
+    msg = luigi.Parameter(default='')
 
     def run(self):
         """ Just complain explicitly about missing program."""
         if not which(self.name):
-            raise Exception('external program %s required' % self.name)
+            raise Exception('%s required. %s' % (self.name, self.msg))
 
     def complete(self):
         return which(self.name) is not None
@@ -295,7 +294,9 @@ class GNDExtract(GNDTask):
 
 
 class SqliteDB(GNDTask):
-    """ Turn the dump into a (id, content) sqlite3 db. """
+    """ Turn the dump into a (id, content) sqlite3 db.
+    This artefact will be used by the cache server.
+    """
 
     date = luigi.DateParameter(default=datetime.date.today())
 
@@ -340,7 +341,8 @@ class SameAs(GNDTask):
         return GNDExtract(date=self.date)
 
     def run(self):
-        """ <owl:sameAs rdf:resource="http://viaf.org/viaf/22508163" /> """
+        """ Example link to VIAF:
+        <owl:sameAs rdf:resource="http://viaf.org/viaf/22508163" /> """
 
         link_pattern = re.compile(
             """<owl:sameAs rdf:resource="([^"]+)" />""", 24)
@@ -586,7 +588,8 @@ class PageRank(GNDTask):
     def requires(self):
         return {
             'data': TranslatedSuccessorCompact(date=self.date),
-            'pagerank': Executable(name='pagerank')
+            'pagerank': Executable(name='pagerank',
+                msg='See: https://github.com/miku/gopagerank')
         }
 
     def run(self):
