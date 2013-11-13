@@ -428,8 +428,8 @@ class SuccessorDB(GNDTask):
 
         with self.input().open() as handle:
             with dbopen(stopover) as cursor:
-                cursor.execute("""CREATE TABLE successor
-                                  (id text, successor text)""")
+                cursor.execute("""CREATE TABLE IF NOT EXISTS successor (id text,
+                    successor text, PRIMARY KEY (id, successor))""")
 
                 for line in handle:
                     id, successor = line.strip().split()
