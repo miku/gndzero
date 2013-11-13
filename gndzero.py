@@ -142,15 +142,10 @@ class dbopen(object):
     """
     Simple context manager for sqlite3 databases. Commits everything at exit.
 
-    Example:
-
-    ::
-
         with dbopen('/tmp/test.db') as cursor:
             query = cursor.execute('SELECT * FROM items')
             result = query.fetchall()
             ...
-
     """
     def __init__(self, path):
         self.path = path
@@ -176,7 +171,7 @@ class DefaultTask(luigi.Task):
     """
     TAG = NotImplemented
 
-    def _parameters(self):
+    def parameter_set(self):
         """
         Return the parameters names as set.
         """
@@ -192,7 +187,7 @@ class DefaultTask(luigi.Task):
         and values of the parametes.
         """
         parts = ['%s-%s' % (p, slugify.slugify(unicode(getattr(self, p)))) 
-                 for p in self._parameters()]
+                 for p in self.parameter_set()]
         fingerprint = '-'.join(parts)
         if len(fingerprint) == 0:
             fingerprint = default
