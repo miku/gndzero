@@ -65,8 +65,9 @@ Percentage of the requests served within a certain time (ms)
 
 """
 
-from flask import Flask, Response, url_for, request
+from flask import Flask, Response, url_for, request, jsonify, redirect
 from gndzero import dbopen, SqliteDB
+import requests
 import re
 
 app = Flask(__name__)
@@ -76,7 +77,7 @@ task = SqliteDB()
 DB = task.output().fn
 
 
-def wrap(s, rewrite=True):
+def wrap(s, rewrite=True, header=True):
     """
     Wrap the snippet in a proper header. Optionally rewrite GND URLs
     to point to the local installation.
@@ -100,25 +101,66 @@ def wrap(s, rewrite=True):
         for match in re.finditer(r"http://d-nb.info/gnd/([0-9a-zA-Z-]+)", s):
             gnd = match.group(1)
             s = s.replace("http://d-nb.info/gnd/{gnd}".format(gnd=gnd),
-                          url_for('default', gnd=gnd, _external=True))
+                          url_for('cache', gnd=gnd, _external=True))
 
-    return "%s\n%s\n</rdf:RDF>" % (HEADER, s)
+    if header:
+        return "%s\n%s\n</rdf:RDF>" % (HEADER, s)
+    else:
+        return "%s\n" % (s)
 
-@app.route("/")
-def index():
-    example = url_for('default', gnd='118514768')
-    return "Hello GND! Example: <a href=%s>%s</a>" % (example, example)
 
-@app.route("/gnd/<gnd>")
-def default(gnd):
-    with dbopen(DB) as cursor:
-        query = cursor.execute('SELECT content FROM gnd WHERE id = ?', (gnd,))
+@app.route("/cache", methods=["PUT"])
+def create_cache():
+    with dbopen("./cache.db") as cursor:
+        cursor.execute("""CREATE TABLE IF NOT EXISTS cache
+                          (id text PRIMARY KEY, content blob,
+                          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        cursor.execute("""CREATE INDEX IF NOT EXISTS
+                              idx_cache_id ON cache (id)""")
+    return jsonify(cache="ok")
+
+
+@app.route("/cache", methods=["DELETE"])
+def drop_cache():
+    with dbopen("./cache.db") as cursor:
+        cursor.execute("""DROP TABLE IF EXISTS cache """)
+        cursor.execute("""DROP INDEX IF EXISTS idx_cache_id""")
+    return jsonify(cache="dropped")
+
+
+@app.route("/gnd/<gnd>", methods=["GET"])
+def cache_bc(gnd):
+    """ Backwards compatibility. """
+    return redirect(url_for('cache', gnd=gnd))
+
+
+@app.route("/cache/<gnd>", methods=["GET"])
+def cache(gnd):
+    """ http://d-nb.info/gnd/118514768/about/rdf """
+    with dbopen("./cache.db") as cursor:
+        query = cursor.execute('SELECT content FROM cache WHERE id = ?', (gnd,))
         result = query.fetchone()
-        wrapped = wrap(result[0], rewrite=request.args.get('rewrite', True))
+        if not result:
+            # download and store
+            r = requests.get("http://d-nb.info/gnd/{gnd}/about/rdf".format(gnd=gnd))
+            cursor.execute("INSERT INTO cache (id, content) VALUES (?, ?)", (gnd, r.text))
+
+        query = cursor.execute('SELECT content FROM cache WHERE id = ?', (gnd,))
+        result = query.fetchone()
+        if not result:
+            raise RuntimeError("Could not cache: %s" % gnd)
+        wrapped = wrap(result[0], rewrite=request.args.get('rewrite', True), header=False)
         return Response(response=wrapped, status=200, headers=None,
                         mimetype='text/xml',
                         content_type='text/xml; charset=utf-8',
                         direct_passthrough=False)
 
+
+@app.route("/")
+def index():
+    example = url_for('cache', gnd='118514768')
+    return "Hello GND! Example: <a href=%s>%s</a>" % (example, example)
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True)
+    app.run(host="0.0.0.0", port=7000, debug=True)
