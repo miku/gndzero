@@ -124,7 +124,7 @@ def random_tmp_path():
     Return a random path, that is located under the system's tmp dir. This
     is just a path, nothing gets touched or created.
     """
-    return os.path.join(tempfile.gettempdir(), 'tasktree-%s' % random_string())
+    return os.path.join(tempfile.gettempdir(), 'gndzero-%s' % random_string())
 
 
 def split(iterable, n):
