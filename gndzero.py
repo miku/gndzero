@@ -166,7 +166,7 @@ class dbopen(object):
 class DefaultTask(luigi.Task):
     """
     A default class for projects. Expects a TAG (e.g. SOURCE_ID) on the class,
-    that gets turned into a instance attribute by the 
+    that gets turned into a instance attribute by the
     `luigi.Task` __metaclass__.
     """
     TAG = NotImplemented
@@ -186,7 +186,7 @@ class DefaultTask(luigi.Task):
         The fingerprint of a task is a string consisting of the names
         and values of the parametes.
         """
-        parts = ['%s-%s' % (p, slugify.slugify(unicode(getattr(self, p)))) 
+        parts = ['%s-%s' % (p, slugify.slugify(unicode(getattr(self, p))))
                  for p in self.parameter_set()]
         fingerprint = '-'.join(parts)
         if len(fingerprint) == 0:
@@ -195,7 +195,7 @@ class DefaultTask(luigi.Task):
 
 
     def path(self, filename=None, ext='tsv'):
-        """ 
+        """
         Autogenerate a path based on some category (those are only
         conventions), the tag (source id) and the name of the class and a given
         extension.
@@ -308,7 +308,7 @@ class SqliteDB(GNDTask):
         pattern = re.compile("""rdf:about="http://d-nb.info/gnd/([0-9X-]+)">""")
 
         with dbopen(stopover) as cursor:
-            cursor.execute("""CREATE TABLE gnd 
+            cursor.execute("""CREATE TABLE gnd
                               (id text  PRIMARY KEY, content blob)""")
             cursor.execute("""CREATE INDEX IF NOT EXISTS
                               idx_gnd_id ON gnd (id)""")
