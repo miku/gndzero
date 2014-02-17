@@ -65,7 +65,7 @@ Percentage of the requests served within a certain time (ms)
 
 """
 
-from flask import Flask, Response, url_for, request, jsonify, redirect
+from flask import Flask, Response, url_for, request, jsonify, redirect, abort
 from gndzero import dbopen, SqliteDB
 import requests
 import re
@@ -111,20 +111,20 @@ def wrap(s, rewrite=True, header=True):
 
 @app.route("/cache", methods=["PUT"])
 def create_cache():
-    with dbopen("./cache.db") as cursor:
-        cursor.execute("""CREATE TABLE IF NOT EXISTS cache
+    with dbopen(DB) as cursor:
+        cursor.execute("""CREATE TABLE IF NOT EXISTS gnd
                           (id text PRIMARY KEY, content blob,
                           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
         cursor.execute("""CREATE INDEX IF NOT EXISTS
-                              idx_cache_id ON cache (id)""")
+                              idx_gnd_id ON gnd (id)""")
     return jsonify(cache="ok")
 
 
 @app.route("/cache", methods=["DELETE"])
 def drop_cache():
-    with dbopen("./cache.db") as cursor:
-        cursor.execute("""DROP TABLE IF EXISTS cache """)
-        cursor.execute("""DROP INDEX IF EXISTS idx_cache_id""")
+    with dbopen(DB) as cursor:
+        cursor.execute("""DROP TABLE IF EXISTS gnd """)
+        cursor.execute("""DROP INDEX IF EXISTS idx_gnd_id""")
     return jsonify(cache="dropped")
 
 
@@ -137,19 +137,27 @@ def cache_bc(gnd):
 @app.route("/cache/<gnd>", methods=["GET"])
 def cache(gnd):
     """ http://d-nb.info/gnd/118514768/about/rdf """
-    with dbopen("./cache.db") as cursor:
-        query = cursor.execute('SELECT content FROM cache WHERE id = ?', (gnd,))
+    with dbopen(DB) as cursor:
+        query = cursor.execute("""SELECT content FROM gnd
+                                  WHERE id = ?""", (gnd,))
         result = query.fetchone()
         if not result:
             # download and store
             r = requests.get("http://d-nb.info/gnd/{gnd}/about/rdf".format(gnd=gnd))
-            cursor.execute("INSERT INTO cache (id, content) VALUES (?, ?)", (gnd, r.text))
+            if r.status_code == 200:
+                cursor.execute("""INSERT INTO gnd (id, content)
+                                  VALUES (?, ?)""", (gnd, r.text))
+            else:
+                # pass on the d-nb.info status code
+                abort(r.status_code)
 
-        query = cursor.execute('SELECT content FROM cache WHERE id = ?', (gnd,))
+        query = cursor.execute("""SELECT content FROM gnd
+                                  WHERE id = ?""", (gnd,))
         result = query.fetchone()
         if not result:
-            raise RuntimeError("Could not cache: %s" % gnd)
-        wrapped = wrap(result[0], rewrite=request.args.get('rewrite', True), header=False)
+            abort(404)
+        wrapped = wrap(result[0], rewrite=request.args.get('rewrite', True),
+                       header=True)
         return Response(response=wrapped, status=200, headers=None,
                         mimetype='text/xml',
                         content_type='text/xml; charset=utf-8',
