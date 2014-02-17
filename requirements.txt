@@ -13,7 +13,7 @@ decorator==3.4.0
 distribute==0.6.34
 gunicorn==18.0
 itsdangerous==0.23
--e git+ssh://git@github.com/spotify/luigi.git@08453d890fc0491f32918a918c0dee08db9f9e33#egg=luigi-dev
+luigi==1.0.13
 lxml==3.2.4
 numpy==1.8.0
 pandas==0.12.0
