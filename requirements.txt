@@ -1,17 +1,27 @@
+Cython==0.20
 Flask==0.10.1
 Jinja2==2.7.1
 MarkupSafe==0.18
+PyYAML==3.10
+SQLAlchemy==0.8.3
+Tempita==0.5.1
 Werkzeug==0.9.4
 argparse==1.2.1
 colorama==0.2.7
+dataset==0.3.13
+decorator==3.4.0
 distribute==0.6.34
 gunicorn==18.0
 itsdangerous==0.23
 -e git+ssh://git@github.com/spotify/luigi.git@08453d890fc0491f32918a918c0dee08db9f9e33#egg=luigi-dev
+lxml==3.2.4
 numpy==1.8.0
 pandas==0.12.0
+plyvel==0.6
 python-dateutil==2.2
 pytz==2013.8
+requests==2.0.1
 six==1.4.1
 slugify==0.0.1
+sqlalchemy-migrate==0.7.2
 wsgiref==0.1.2
