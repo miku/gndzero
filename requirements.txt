@@ -6,7 +6,7 @@ PyYAML==3.10
 SQLAlchemy==0.8.3
 Tempita==0.5.1
 Werkzeug==0.9.4
-argparse==1.2.1
+argparse==1.1
 colorama==0.2.7
 dataset==0.3.13
 decorator==3.4.0
