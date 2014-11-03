@@ -74,8 +74,7 @@ app = Flask(__name__)
 
 # the current database, must already be in place
 task = SqliteDB()
-DB = task.output().fn
-
+DB = '/tmp/test.db'
 
 def wrap(s, rewrite=True, header=True):
     """
