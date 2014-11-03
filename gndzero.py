@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+"""
+DEPRECATED: Please use and extend https://github.com/miku/siskin/blob/master/siskin/sources/gnd.py
+instead.
+"""
+
 from __future__ import print_function
 
 from colorama import Fore, Back, Style
